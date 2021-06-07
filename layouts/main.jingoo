@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+  <head>
+    <title>{{ frontmatter.title }}</title>
+    {% include "head.jingoo" %}
+  </head>
+  <body>
+    <div id='main'>
+      {% include "header.jingoo" %}
+      {{ content }}
+      {% include "footer.jingoo" %}
+    </div>
+  </body>
+</html>
