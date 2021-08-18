@@ -1,0 +1,9 @@
+<header>
+  <nav>
+    <ul>
+      <li><a href='/index.html'>home</a></li>
+      <li><a href='/projects.html'>projects</a></li>
+      <li><a href='/writing/index.html'>writing</a></li>
+    </ul>
+  </nav>
+</header>

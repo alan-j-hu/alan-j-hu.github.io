@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <title>{{ frontmatter.title }}</title>
+    {% include "head.jingoo" %}
+  </head>
+  <body>
+    <div id='main'>
+      {% include "header.jingoo" %}
+      <h1>{{ frontmatter.title }}</h1>
+      <div class='subtitle'>{{ frontmatter.subtitle }}</div>
+      <center>{{ format_date("%B %_d, %Y", frontmatter.published) }}</center>
+      {{ content }}
+      {% include "footer.jingoo" %}
+    </div>
+  </body>
+</html>

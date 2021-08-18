@@ -1,0 +1,29 @@
+name: github pages
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v2
+        with:
+          ocaml-compiler: 4.12.0
+
+      - name: Build
+        run: |
+          sudo apt-get install libonig-dev
+          opam install camyll
+          opam exec -- camyll build
+
+      - name: Deploy
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
