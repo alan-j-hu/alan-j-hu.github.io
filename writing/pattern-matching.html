@@ -169,10 +169,9 @@ correct code.
    <p>
     Variations of pattern matching have seen increasing mainstream adoption as
 programmers and language designers have realized its value. Pattern matching on
-datatypes first appeared in a language called NPL, which evolved from an
-equational language. The HOPE language would combine NPL's pattern
-matching feature with functional programming language features from the LCF
-dialect of ML [<a href="https://smlfamily.github.io/history/SML-history.pdf">MacQueen, Harper, and Reppy (2020)</a>]. <a href="https://docs.swift.org/swift-book/ReferenceManual/Patterns.html">Swift</a> and <a href="https://doc.rust-lang.org/stable/reference/patterns.html">Rust</a> are two modern
+datatypes first appeared in a language called NPL. The HOPE language would
+combine NPL's pattern matching feature with functional programming language
+features from the LCF dialect of ML [<a href="https://smlfamily.github.io/history/SML-history.pdf">MacQueen, Harper, and Reppy (2020)</a>]. <a href="https://docs.swift.org/swift-book/ReferenceManual/Patterns.html">Swift</a> and <a href="https://doc.rust-lang.org/stable/reference/patterns.html">Rust</a> are two modern
 languages that support a version of pattern matching close to how it appears in
 ML dialects. Other languages have retrofitted more limited forms of pattern
 matching onto their existing designs. C++17 supports <a href="https://en.cppreference.com/w/cpp/language/structured_binding"><em>structured binding</em></a> to decompose
@@ -838,7 +837,7 @@ ML-style pattern matching.
 matching, research languages are continuing to innovate on top of ML-style pattern
 matching. <a href="https://agda.readthedocs.io/en/v2.6.2.1/language/function-definitions.html">Agda</a>
 supports ML-style pattern matching over dependent types and codata types.
-Matching over depedent types can refine the types of other terms and rule out
+Matching over dependent types can refine the types of other terms and rule out
 cases as unreachable. Matching over codata types <em>defines</em> a potentially
 infinite computation by how to inspect it. For an algorithm to compile Agda's
 pattern matching, see <a href="https://jesper.sikanda.be/files/elaborating-dependent-copattern-matching.pdf">Cockx and Abel (2018)</a>.
