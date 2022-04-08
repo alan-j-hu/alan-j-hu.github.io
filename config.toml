@@ -1,9 +1,11 @@
 source_dir = "site"
 dest_dir = "public"
-grammar_dir = "highlighting"
+grammar_dir = "grammars"
 layout_dir = "layouts"
 partial_dir = "partials"
 agda_dir = "lagda"
 exclude = ["*.agdai"]
-taxonomies = []
 
+[[taxonomies]]
+name = "tags"
+layout = "tag.jingoo"
