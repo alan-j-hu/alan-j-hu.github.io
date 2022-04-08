@@ -123,10 +123,9 @@ correct code.
 
 Variations of pattern matching have seen increasing mainstream adoption as
 programmers and language designers have realized its value. Pattern matching on
-datatypes first appeared in a language called NPL, which evolved from an
-equational language. The HOPE language would combine NPL's pattern
-matching feature with functional programming language features from the LCF
-dialect of ML [[MacQueen, Harper, and Reppy (2020)](
+datatypes first appeared in a language called NPL. The HOPE language would
+combine NPL's pattern matching feature with functional programming language
+features from the LCF dialect of ML [[MacQueen, Harper, and Reppy (2020)](
 https://smlfamily.github.io/history/SML-history.pdf)]. [Swift](
 https://docs.swift.org/swift-book/ReferenceManual/Patterns.html) and [Rust](
 https://doc.rust-lang.org/stable/reference/patterns.html) are two modern
@@ -754,7 +753,7 @@ matching, research languages are continuing to innovate on top of ML-style patte
 matching. [Agda](
 https://agda.readthedocs.io/en/v2.6.2.1/language/function-definitions.html)
 supports ML-style pattern matching over dependent types and codata types.
-Matching over depedent types can refine the types of other terms and rule out
+Matching over dependent types can refine the types of other terms and rule out
 cases as unreachable. Matching over codata types *defines* a potentially
 infinite computation by how to inspect it. For an algorithm to compile Agda's
 pattern matching, see [Cockx and Abel (2018)](
