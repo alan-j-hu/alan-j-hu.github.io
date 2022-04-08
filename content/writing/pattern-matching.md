@@ -443,6 +443,7 @@ let d1 () =
     begin match x with
       | Suc x2 -> 2 (* By Case 1 *)
       | _ -> default
+    end
   | Suc v1 ->
     (* Scrutinees: v1, x
        Clauses:
