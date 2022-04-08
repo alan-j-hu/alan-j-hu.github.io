@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html>
+ <head>
+  <title>
+   The Case for Pattern Matching
+  </title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="../highlighting.css" rel="stylesheet">
+  <link href="../lagda/Agda.css" rel="stylesheet">
+  <link href="../site.css" rel="stylesheet">
+  <script src="../loader.js" defer=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" type="text/javascript" id="MathJax-script" defer=""></script>
+ </head>
+ <body>
+  <div id="main">
+   <header>
+    <nav>
+     <ul>
+      <li>
+       <a href="../index.html">home</a>
+      </li>
+      <li>
+       <a href="../projects.html">projects</a>
+      </li>
+      <li>
+       <a href="index.html">writing</a>
+      </li>
+     </ul>
+    </nav>
+   </header>
+   <h1>
+    The Case for Pattern Matching
+   </h1>
+   <div class="subtitle">
+    A tutorial on two pattern match compilation algorithms
+   </div>
+   <center>
+    April  8, 2022
+   </center>
+   Tags:
+      [<a href="../tags/compilers.html">compilers</a>]
+   <p>
+    Pattern matching is a powerful programming language feature for performing
+case analysis over a data type. Patterns, a high-level description of the forms
+which data may take, more closely resemble the logic of the problem domain than
+lower-level control structures, promoting more readable and concise code.
+In recognition of these benefits, popular programming languages are now
+adopting pattern matching, and I advocate for its further adoption. However,
+how to compile pattern matching to low-level control flow is not obvious, so in
+hopes of making pattern matching a more accessible feature for language
+implementors, I will show two algorithms to compile pattern matching,
+<a href="https://www.ccs.neu.edu/~types/resources/a-fpca-1985.pdf">Augustsson (1985)</a>
+and <a href="http://moscova.inria.fr/~maranget/papers/ml05e-maranget.pdf">Maranget (2008)
+</a>.
+   </p>
+   <h2>
+    Motivating Example: Symbolic Differentiation
+   </h2>
+   <p>
+    Pattern matching is useful for domains that involve symbolic manipulation
+because it allows programmers to write declarative functions that resemble
+mathematical equations. Take, for instance, symbolic differentiation of
+rational fractions, which are polynomials extended with division. The following
+is an OCaml type definition of rational fractions:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">type </span><span style="color: #d73a49;">rational </span><span style="color: #6a737d;">=</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">X</span><span style="color: #005cc5;">                          </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* Variable </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Const</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">float</span><span style="color: #005cc5;">             </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* Constant </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Add</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* Sum of rational fractions </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* Product of rational fractions </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Div</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">rational</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* Quotient of rational fractions </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span></code></pre>
+   <p>
+    The above data type defines the forms that a rational fraction may take: A
+rational fraction is either a variable, a constant, the sum of rational
+fractions, the product of rational fractions, or the quotient of rational
+fractions. (\(x^2\) is represented as <code>Mul(X, X)</code>.) One can then write a
+function that finds the derivative of a rational fraction by pattern matching
+on each form:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">let </span><span style="">rec </span><span style="color: #005cc5;">deriv</span><span style="color: #005cc5;"> </span><span style="">=</span><span style="color: #032f62;"> </span><span style="">function</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;"> </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">X</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Const</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">1.0</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Const</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">c</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Const</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">0.0</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Add</span><span style="color: #005cc5;">(</span><span style="color: #24292e;">u</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Add</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">deriv u, deriv v</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #24292e;">u</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Add</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">v, deriv u</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">u, deriv v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Div</span><span style="color: #005cc5;">(</span><span style="color: #24292e;">u</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">    </span><span style="color: #005cc5;">Div</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Add</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">v, deriv u</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Const</span><span style="color: #005cc5;">(</span><span style="">-</span><span style="color: #005cc5;">1.0</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">u, deriv v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">,
+</span></span><span class="sourceLine"><span style="color: #005cc5;">        </span><span style="color: #005cc5;">Mul</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">v, v</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span></code></pre>
+   <p>
+    Each clause of this function corresponds with a mathematical rule for finding
+the derivative:
+   </p>
+   <p>
+    $$
+\begin{align*}
+\frac{dx}{dx} &amp;= 1\\
+\frac{dC}{dx} &amp;= 0\\
+\frac{d}{dx}(u + v) &amp;= \frac{du}{dx} + \frac{dv}{dx}\\
+\frac{d}{dx}(uv) &amp;= v\frac{du}{dx} + u\frac{dv}{dx}\\
+\frac{d}{dx}(\frac{u}{v}) &amp;= \frac{v\frac{du}{dx} - u\frac{dv}{dx}}{v^2}\\
+\end{align*}
+$$
+   </p>
+   <p>
+    Therefore, pattern matching facilitates a straightforward translation from
+mathematics to programs.
+   </p>
+   <h2>
+    Motivating Example: Red-Black Trees
+   </h2>
+   <p>
+    Not only is pattern matching useful for domains that involve symbols, it is
+also useful for implementing classic algorithms and data structures. Consider
+this OCaml type definition of red-black trees:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">type </span><span style="color: #d73a49;">color </span><span style="color: #6a737d;">=</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Black</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">type </span><span style="color: #d73a49;">'a tree </span><span style="color: #6a737d;">=</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Empty</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">color</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">'a</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">tree</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">'a</span><span style="color: #005cc5;"> </span><span style="">*</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">'a</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">tree</span><span style="color: #005cc5;">
+</span></span></code></pre>
+   <p>
+    To remain balanced, a red-black tree maintains the invariant that a red node
+cannot have a red child. There are four ways to violate this invariant:
+   </p>
+   <ul>
+    <li>
+     The red left child's left child is red
+    </li>
+    <li>
+     The red left child's right child is red
+    </li>
+    <li>
+     The red right child's left child is red
+    </li>
+    <li>
+     The red right child's right child is red
+    </li>
+   </ul>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">let </span><span style="color: #005cc5;">balance</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(</span><span style="color: #24292e;">l</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">:</span><span style="color: #d73a49;"> 'a tree</span><span style="color: #6a737d;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(</span><span style="color: #24292e;">v</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">:</span><span style="color: #d73a49;"> 'a</span><span style="color: #6a737d;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(</span><span style="color: #24292e;">r</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">:</span><span style="color: #d73a49;"> 'a tree</span><span style="color: #6a737d;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">: </span><span style="color: #d73a49;">'a tree * 'a * 'a tree </span><span style="">=</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">match</span><span style="color: #032f62;"> l, v, r </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;"> </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t1, a, t2</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">, b, t3</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">, c, t4
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t1, a, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t2, b, t3</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">, c, t4
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #032f62;"> t1, a, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t2, b, t3</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">, c, t4</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">t1</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">a</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red, </span><span style="color: #24292e;">t2</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">b</span><span style="color: #005cc5;">, Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red, </span><span style="color: #24292e;">t3</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">c</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">t4</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">    </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t1, a, t2</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">, b, </span><span style="color: #005cc5;">Node</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Red</span><span style="color: #005cc5;">, t3, c, t4</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">l</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">v</span><span style="color: #005cc5;">, </span><span style="color: #24292e;">r</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> l, v, r
+</span></span></code></pre>
+   <p>
+    The above function handles each case. This function uses three notable
+features: First, it features non-trivial nested patterns by matching on
+subtrees. Second, it has overlapping patterns because if the function were
+passed two red nodes with a red child, or a red node with two red children,
+multiple clauses would match the arguments. In the case of multiple matches,
+the higher clause takes precedence. Third, the function uses or-patterns by
+mapping four cases to the same rebalanced tree.
+   </p>
+   <p>
+    The equivalent code to balance a red-black tree using control structures
+such as if-statements instead of pattern matching would have been less clear
+and therefore more prone to bugs. Pattern matching promotes readable and
+correct code.
+   </p>
+   <h2>
+    Adoption of Pattern Matching
+   </h2>
+   <p>
+    Variations of pattern matching have seen increasing mainstream adoption as
+programmers and language designers have realized its value. Pattern matching on
+datatypes first appeared in a language called NPL, which evolved from an
+earlier equational language. The HOPE language would combine NPL's pattern
+matching feature with functional programming language features from the LCF
+dialect of ML [<a href="https://smlfamily.github.io/history/SML-history.pdf">MacQueen, Harper, and Reppy (2020)</a>]. <a href="https://docs.swift.org/swift-book/ReferenceManual/Patterns.html">Swift</a> and <a href="https://doc.rust-lang.org/stable/reference/patterns.html">Rust</a> are two modern
+languages that support a version of pattern matching close to how it appears in
+ML dialects. Other languages have retrofitted more limited forms of pattern
+matching onto their existing designs. C++17 supports <a href="https://en.cppreference.com/w/cpp/language/structured_binding"><em>structured binding</em></a> to decompose
+objects and adds <a href="https://en.cppreference.com/w/cpp/utility/variant">std::variant</a>, a tagged union that can
+be dispatched by type, to the standard library. Python has long supported
+<a href="https://docs.python.org/3/reference/simple_stmts.html#assignment-statements">assignment to comma-separated targets</a>,
+and since <a href="https://www.python.org/downloads/release/python-3100/">version 3.10</a>
+has <a href="https://peps.python.org/pep-0634/">"structural pattern matching."</a> <a href="https://docs.oracle.com/en/java/javase/17/language/pattern-matching.html">Java
+SE 17</a> adds
+pattern matching over an object's type in switch statements. What distinguishes
+ML's pattern matching from other variations are:
+   </p>
+   <ul>
+    <li>
+     Data types to constrain the forms that matchable data may take
+    </li>
+    <li>
+     Data deconstruction and case analysis as a unified feature
+    </li>
+    <li>
+     Composition of patterns through nesting to describe more precise cases
+    </li>
+   </ul>
+   <p>
+    Non-nested patterns simply compile to a multi-way branch. The challenge is
+compiling nested patterns, but this nesting is precisely what gives pattern
+matching its full power, as seen in the red-black tree example. Algorithms for
+compiling pattern matching show how to translate nested patterns into nested
+cases and jumps. Now, I will show two such algorithms, Augustsson (1985) and
+Maranget (2008). For both algorithms, I will work through the compilation of
+the Ackermann function defined with pattern matching. I've intentionally
+swapped the two parameters when matching on them to apply the tricky fourth
+case of Augustsson's algorithm:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">type </span><span style="color: #d73a49;">nat </span><span style="color: #6a737d;">=</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="">of</span><span style="color: #005cc5;"> </span><span style="color: #d73a49;">nat</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;">* A natural number is either 0 or n+1 where n is a natural number </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">let </span><span style="">rec </span><span style="color: #005cc5;">ackermann</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">y</span><span style="color: #005cc5;"> </span><span style="">=</span><span style="color: #032f62;"> </span><span style="">match</span><span style="color: #032f62;"> y, x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;"> </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">n</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #032f62;"> n
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">m</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> ackermann m </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">n</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">m</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> ackermann m </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">ackermann </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> m</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> n</span><span style="color: #005cc5;">)</span><span style="color: #032f62;">
+</span></span></code></pre>
+   <h2>
+    Augustsson's Algorithm
+   </h2>
+   <p>
+    Augustsson (1985) presents an algorithm for compiling pattern matching to
+simple case expressions which only dispatch on the outermost constructor,
+permitting straightforward translation to low-level code. In Augustsson's
+algorithm, a pattern \(p\) is either a variable pattern \(v_i\), which
+matches any term and binds the term to the variable \(v_i\), or a
+constructor pattern \(C^i(p_1\cdots p_n)\), which matches a value of the form
+\(C^i(e_1\cdots e_n)\) where \(p_1\cdots p_n\) matches \(e_1\cdots e_n\).
+   </p>
+   <p>
+    Let \(\textbf{C}\) be the pattern match compiler function, called as:
+   </p>
+   <p>
+    $$
+\begin{align*}
+\textbf{C}(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\langle p_{1,1}\cdots p_{1,n}\rangle: &amp; E_1\\
+\langle p_{2,1}\cdots p_{2,n}\rangle: &amp; E_2\\
+\vdots\\
+\langle p_{m,1}\cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix},
+d)
+\end{align*}
+$$
+   </p>
+   <p>
+    where the first argument is the list of expressions to match, the second
+argument is the list of pattern clauses, and the third argument is the default
+expression if all the matches fail.
+   </p>
+   <p>
+    \(\textbf{C}\) compiles nested patterns into code that performs a
+left-to-right and depth-first examination of terms. If a pattern match fails,
+the generated code backtracks. The definition of \(\textbf{C}\) proceeds in
+cases:
+   </p>
+   <h3>
+    Case 0
+   </h3>
+   <p>
+    $$
+\begin{align*}
+\textbf{C}(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\end{pmatrix},
+d) := d
+\end{align*}
+$$
+   </p>
+   <p>
+    This zeroeth case does not appear in Augustsson's paper (instead he handles it
+in the third case), but creating a separate case simplifies presentation. When
+the clause list is empty, the pattern match compiles to the default action
+\(d\). In all subsequent cases, the clause list contains at least one clause.
+   </p>
+   <h3>
+    Case 1
+   </h3>
+   <p>
+    $$
+\begin{align*}
+\textbf{C}(\langle \rangle,
+\begin{pmatrix}
+\langle \rangle: &amp; E_1\\
+\langle \rangle: &amp; E_2\\
+\vdots\\
+\langle \rangle: &amp; E_m\\
+\end{pmatrix},
+d) := E_1
+\end{align*}
+$$
+   </p>
+   <p>
+    In the first case, \(e_1\cdots e_m\) is empty. In this case, the resulting
+code is \(E_1\).
+   </p>
+   <h3>
+    Case 2
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; \textbf{C}(\langle e_1,e_2\cdots e_n\rangle,
+\begin{pmatrix}
+\langle v_1,p_{1,2}\cdots p_{1,n}\rangle: &amp; E_1\\
+\langle v_2,p_{2,2}\cdots p_{2,n}\rangle: &amp; E_2\\
+\vdots\\
+\langle v_n,p_{n,2}\cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix},
+d):=\\
+&amp;\textbf{let}\: v = e_1 \textbf{in}\\
+&amp; \textbf{C}(\langle e_2\cdots e_n\rangle,
+\begin{pmatrix}
+\langle p_{1,2}\cdots p_{1,n}\rangle: &amp; E_1[v_1:=v]\\
+\langle p_{2,2}\cdots p_{2,n}\rangle: &amp; E_2[v_2:=v]\\
+\vdots\\
+\langle p_{m,2}\cdots p_{m,n}\rangle: &amp; E_m[v_n:=v]\\
+\end{pmatrix},
+d)
+\end{align*}
+$$
+   </p>
+   <p>
+    In the second case, \(e_1\cdots e_n\) contains at least one term, and all
+the patterns in the first column are variable patterns. The compiler removes
+\(e_1\) from the list of terms and generates a new variable for it, then
+substitutes this variable for the corresponding variable pattern in each body
+expression. Compilation then continues on \(e_2\cdots e_n\) and the
+corresponding remaining patterns in the clauses.
+   </p>
+   <h3>
+    Case 3
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; \textbf{C}(\langle e_1,e_2\cdots e_n\rangle,
+\begin{pmatrix}
+\langle C_1(q\cdots),p_{1,2}\cdots p_{1,n}\rangle: &amp; E_1\\
+\vdots\\
+\langle C_k(q\cdots),p_{k,2}\cdots p_{k,n}\rangle: &amp; E_k\\
+\langle v_{k+1},p_{k+1,2}\cdots p_{k+1,n}\rangle: &amp; E_{k+1}\\
+\vdots\\
+\langle v_m,p_{m,2}\cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix},
+d):=\\
+&amp; \textbf{case}\: e_1 \textbf{of}\\
+&amp; \mid C^1(v^1_1\cdots v^1_j)
+\to \textbf{C}(\langle v^1_1\cdots v^1_j,e_2\cdots e_n \rangle,
+M^1,
+\textbf{default})\\
+&amp; \qquad\vdots\\
+&amp; \mid C^N(v^N_1\cdots v^N_{j'})
+\to \textbf{C}(\langle v^N_1\cdots v^N_{j'},e_2\cdots e_n \rangle, M^N,
+\textbf{default})\\
+&amp; \mid v \to \textbf{C}(\langle e_2\cdots e_n \rangle,
+\begin{pmatrix}
+\langle p_{k+1,2}\cdots p_{k+1,n}\rangle: &amp; E_{k+1}[v_{k+1}:=v]\\
+&amp; \vdots\\
+\langle p_{m,2}\cdots p_{m,n}\rangle: &amp; E_m[v_n:=v]\\
+\end{pmatrix},
+d)\\
+\end{align*}
+$$
+   </p>
+   <p>
+    In the third case, \(e_1 \cdots e_n\) contains at least one element, and
+in the first column, any (possibly none) variable patterns appear below all
+constructor patterns. The compiler generates a case analysis on \(e_1\) with
+branches for each distinct constructor \(C^1\cdots C^N\) that appears in the
+first column, where clause list \(M^i\) for each constructor \(C^i\) is a
+function of clauses \(1\cdots k\). The compiler also generates a catch-all
+variable case to handle all constructors of the data type which do not appear
+in a pattern in the first column. \(\textbf{default}\) is a special
+instruction in the intermediate language that backtracks to the nearest
+enclosing variable pattern case in the compiled code.
+   </p>
+   <p>
+    For each constructor case \(C^i\), the compiler generates new variables
+\(v^i_1\cdots v^i_j\) as names for each subterm of the scrutinee. Then, the
+compiler generates a new clause list \(M^i\) from clauses \(1\cdots k\) by
+replacing all matching clauses, in the form
+\(\langle C^i(q_1\cdots q_a),p_2\cdots p_n\rangle: E\), with
+\(\langle q_1\cdots q_a,p_2\cdots p_n\rangle: E\) and filtering out
+all non-matching clauses, in the form
+\(\langle C^j(q_1\cdots q_j),p_2\cdots p_n\rangle: E\) where
+\(C^i\neq C^j\). In each constuctor case, matching continues on
+\(\langle v^i_1\cdots v^i_j,e_2\cdots e_n\rangle\).
+   </p>
+   <p>
+    In the catch-all case, variables are again substituted as appropriate, and
+matchng continues on \(\langle e_2\cdots e_n\rangle\).
+   </p>
+   <h3>
+    Case 4
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; \textbf{C}(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\langle C_1(q_1\cdots),p_{1,2}\cdots p_{1,n}\rangle: &amp;E_1\\
+\langle C_2(q_2\cdots),p_{2,2}\cdots p_{2,n}\rangle: &amp; E_2\\
+\vdots\\
+\langle x_k,p_{k,2}\cdots p_{k,n}\rangle: &amp; E_2\\
+\langle C_{k+1}(q_\cdots),p_{k+1,2}\cdots p_{k+1,n}\rangle: &amp; E_2\\
+\vdots\\
+\langle x_m,p_{m,2}\cdots p_{m,n}\rangle: &amp; E_n\\
+\end{pmatrix},
+d):=\\
+&amp; \textbf{let}\:d_\ell = d\:\textbf{in}\\
+&amp; \textbf{let}\:d_{\ell-1} = \textbf{C}(\langle e_1\cdots e_n\rangle, P_\ell, d_\ell)\:\textbf{in}\\
+&amp; \qquad\vdots \\
+&amp; \textbf{let}\:d_2 = \textbf{C}(\langle e_1\cdots e_n\rangle, P_3, d_3)\:\textbf{in}\\
+&amp; \textbf{let}\:d_1 = \textbf{C}(\langle e_1\cdots e_n\rangle, P_2, d_2)\:\textbf{in}\\
+&amp; \textbf{C}(\langle e_1\cdots e_n\rangle, P_1, d_1) \\
+\end{align*}
+$$
+   </p>
+   <p>
+    In the fourth and last case, \(e_1 \cdots e_m\) contains at least one
+element and in the first column of patterns, a variable pattern in clause
+\(k\) appears above a constructor pattern in clause \(k+1\). Augustsson
+proposes two ways to compile this case: The first is to compute a new pattern
+that captures the overlap between two patterns which must switch places, and
+inserting it between them. The second, which is what he illustrates in the
+paper, is to split the clause list into the longest subsequences
+\(P_1,P_2,\cdots P_\ell\) such that the third case applies to each of them
+alone, then compile each subsequence as a separate match and generate code that
+tries them in succession. (Therefore, given two adjacent subsequences
+\(P\) and \(P'\), the last clause of \(P\) will begin with a variable
+pattern and the first clause of \(P'\) will begin with a constructor
+pattern.)
+   </p>
+   <p>
+    Note that Augustsson developed his algorithm in the context of Lazy ML, so
+each definition \(\:d_i = \cdots\) is not evaluated until necessary. In an
+eagerly evaluated setting, the appropriate adjustments should be made, such as
+deferring each definition under a lambda abstraction.
+   </p>
+   <h3>
+    Example: Ackermann
+   </h3>
+   <p>
+    Now, consider how to use Augustsson's algorithm to compile the pattern match
+from the Ackermann definition:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">match</span><span style="color: #032f62;"> y, x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x1</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">1</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x2</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">2</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x3</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x4</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">3</span><span style="color: #032f62;">
+</span></span></code></pre>
+   <p>
+    There are two scrutinees, <code>y</code> and <code>x</code>. (Technically, in OCaml, there is one
+scrutinee, which is the tuple expression <code>y, x</code>, but for demonstration
+purposes, assume that the tuple has already been expanded to match on its
+parts.) The variables <code>m</code> and <code>n</code> bound in the original Ackermann definition
+have been renamed to unique names <code>x1</code>, <code>x2</code>, <code>x3</code>, and <code>x4</code> to clearly
+distinguish between different variables, bound in different clauses, which
+happen to share the same name. The clause right-hand-sides have also been
+replaced with numbers. The initial invocation of Augustsson's function is:
+   </p>
+   <p>
+    $$
+\begin{align*}
+\textbf{C}(\langle y, x \rangle,
+\begin{pmatrix}
+\langle x_1, Zero \rangle: &amp; E_1\\
+\langle Zero, Suc\:x_2 \rangle: &amp; E_2\\
+\langle Suc\:x_3, Suc\:x_4 \rangle: &amp; E_3\\
+\end{pmatrix},
+\text{raise (Match_failure("", 0, 0))})
+\end{align*}
+$$
+   </p>
+   <p>
+    The following is the generated code commented with the rules that generated
+each section:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 4
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   P_0:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   x1, Zero -&gt; 1
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   P_1:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Zero, Suc x2 -&gt; 2
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Suc x3, Suc x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">let </span><span style="color: #005cc5;">d2</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">()</span><span style="color: #005cc5;"> </span><span style="">=</span><span style="color: #032f62;"> raise </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">Match_failure</span><span style="color: #005cc5;">(</span><span style="color: #032f62;">"</span><span style="color: #032f62;">"</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">0</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">0</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">)</span><span style="color: #032f62;"> </span><span style="">in</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">let </span><span style="color: #005cc5;">d1</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">()</span><span style="color: #005cc5;"> </span><span style="">=</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: y, x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Clauses = P_1:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Zero, Suc x2 -&gt; 2
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Suc x3, Suc x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">match</span><span style="color: #032f62;"> y </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;"> </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       Suc x2 -&gt; 2 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">    </span><span style="">begin</span><span style="color: #005cc5;"> </span><span style="">match</span><span style="color: #005cc5;"> x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">     </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x2</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">2</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 1 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">_</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> default
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">v1</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: v1, x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       x3, Suc x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 2 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="">let</span><span style="color: #005cc5;"> x3 </span><span style="">=</span><span style="color: #005cc5;"> v1 </span><span style="">in</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">       Suc x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="">begin</span><span style="color: #005cc5;"> </span><span style="">match</span><span style="color: #005cc5;"> x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">     </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x4</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">3</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 1 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">_</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> default
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="">end</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">_</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> d2 </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> default jumps here </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">in</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: y, x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Clauses = P_0:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   x1, Zero -&gt; 1 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 2 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">let</span><span style="color: #005cc5;"> x1 </span><span style="">=</span><span style="color: #005cc5;"> y </span><span style="">in</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Zero -&gt; 1 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">match</span><span style="color: #005cc5;"> x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">1</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 1 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">_</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;"> d1 </span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">)</span><span style="color: #005cc5;">
+</span></span></code></pre>
+   <h2>
+    Maranget's Algorithm
+   </h2>
+   <p>
+    Maranget (2008) presents another algorithm for compiling pattern matches.
+Maranget's approach has an advantage over Augustsson's because Augustsson's
+algorithm may generate backtracking <em>automata</em>, but Maranget's algorithm
+generates a <em>decision tree</em>, which examines a scrutinee at most once. In
+contrast, decision trees have the disadvantage of code size blow-up in
+comparison to automata. I will continue to use Augustsson's notation when
+showing Maranget's algorithm for consistency.
+   </p>
+   <p>
+    In Maranget's algorithm, a pattern \(p\) is either a wildcard pattern
+\(\_\), which matches any term, a constructor pattern
+\(C^i(p_1\cdots p_M)\), or an or-pattern \(p_1\mid p_2\). Maranget
+then rewrites all patterns of the form \(\_\mid p_2\) into \(\_\).
+Therefore, a pattern \(p\) is either a wildcard pattern \(\_\) or a
+<em>generalized constructor pattern</em> \(q\), which is either
+\(C(p_1\cdots p_j)\) or an or-pattern in the form \(q\mid p\). In
+other words, a wildcard can only appear at the end of an or-pattern sequence.
+   </p>
+   <p>
+    Maranget defines a compilation function \(CC\), which takes the following
+form where the first argument is the list of expressions to match and the
+second argument is the list of pattern clauses:
+   </p>
+   <p>
+    $$
+\begin{align*}
+&amp; CC(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\langle p_{1,1}\cdots p_{1,n}\rangle: &amp; E_1\\
+\langle p_{2,1}\cdots p_{2,n}\rangle: &amp; E_2\\
+\vdots\\
+\langle p_{m,1}\cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix})
+\end{align*}
+$$
+   </p>
+   <p>
+    Unlike Augustsson's \(C\) function, which always matches on the first term
+in the list, Maranget's \(CC\) chooses the next term to match based on the
+clause list. The resulting code never backtracks or examines the same term
+twice. Like Augustsson's algorithm, upon matching a term, Maranget's algorithm
+replaces it with its subterms in the list of pending terms to match.
+   </p>
+   <h3>
+    Case 1
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; CC(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\end{pmatrix}) := fail
+\end{align*}
+$$
+   </p>
+   <p>
+    If the clause list is empty, the pattern match fails.
+   </p>
+   <h3>
+    Case 2
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; CC(\langle e_1\cdots e_n\rangle,
+\begin{pmatrix}
+\langle \__{1,1}\cdots \__{1,n}\rangle: &amp; E_1\\
+\vdots\\
+\langle p_{m,1}\cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix}) := E_1
+\end{align*}
+$$
+   </p>
+   <p>
+    If the first clause only consist of wildcards, the pattern match compiles to
+\(E_1\).
+   </p>
+   <h3>
+    Case 3
+   </h3>
+   <p>
+    $$
+\begin{align*}
+&amp; CC(\langle e_1\cdots e_i\cdots e_n\rangle,
+\begin{pmatrix}
+\langle p_{1,1}\cdots q_{1,i} \cdots p_{1,n}\rangle: &amp; E_1\\
+\vdots\\
+\langle p_{m,1}\cdots p_{m,i} \cdots p_{m,n}\rangle: &amp; E_m\\
+\end{pmatrix}\textbf{as}\:P \to A):=\\
+&amp; \textbf{case}\: e_i \textbf{of}\\
+&amp; \mid C^1(v^1_1\cdots v^1_k)
+\to CC(\langle e_1\cdots e_{i-1},v^1_1\cdots v^1_k,e_{i+1}\cdots e_n \rangle,
+S(C^j, P \to A))\\
+&amp; \qquad\vdots\\
+&amp; \mid C^N(v^N_1\cdots v^N_{k'})\to
+CC(\langle e_1\cdots e_{i-1},v^N_1\cdots v^N_{k'},e_{i+1}\cdots e_n \rangle,
+S(C^j, P \to A))\\
+&amp; \mid v\to
+CC(\langle e_1\cdots e_{i-1},e_{i+1}\cdots e_n \rangle, D(P \to A))\\
+\end{align*}
+$$
+   </p>
+   <p>
+    Otherwise, there exists some column at index \(i\) whose top pattern is a
+generalized constructor pattern. Maranget divides this case into two sub-cases,
+when \(i=1\) and \(i&gt;1\), the latter case which he rewrites into the former
+with a column swap. However, I believe that the swap adds more complexity, so
+I've chosen to explain the rule in terms of the general \(i\) case.
+   </p>
+   <p>
+    The term \(e_i\) is tested, and for each constructor that appears in column
+\(i\), compilation proceeds to replace \(e_i\) with its subterms and
+compile the corresponding pattern matches for the new list of terms. There
+is also a catch-all case, in which \(e_i\) is removed from the list of
+terms, but no subterms are inserted. To compute the new clauses to compile
+in the constructor and catch-all cases, Maranget defines two helper operations
+over clauses: specialization \(S\) and default \(D\) respectively.
+   </p>
+   <p>
+    For each constructor that appears in column \(i\), the compiler performs
+specialization on the list of clauses. Specialization against a constructor
+\(C^j\) handles four possible cases for each clause:
+   </p>
+   <p>
+    $$
+\begin{align*}
+&amp;\langle p_1\cdots p_{i-1},\_,p_{i+1}\cdots p_N\rangle: E &amp;&amp;\mapsto&amp;&amp;
+\langle p_1\cdots p_{i-1},\__1\cdots \__a,p_{i+1}\cdots p_N \rangle: E\\
+&amp;\langle p_1\cdots p_{i-1},C^j(q_1\cdots q_a),p_{i+1}\cdots p_N\rangle: E
+&amp;&amp;\mapsto&amp;&amp;
+\langle p_1\cdots p_{i-1},q_1\cdots q_a,p_{i+1}\cdots p_N \rangle: E\\
+&amp;\langle p_1\cdots p_{i-1},C^k(q_1\cdots q_a),p_{i+1}\cdots p_N\rangle: E
+&amp;&amp;\mapsto&amp;&amp;\begin{pmatrix}
+\text{No rows}
+\end{pmatrix}, C^j \neq C^k\\
+&amp;\langle p_1\cdots p_{i-1},(q \mid p),p_{i+1}\cdots p_N\rangle: E &amp;&amp;\mapsto
+     &amp;&amp; S(C^j, \langle p_1\cdots p_{i-1},q,p_{i+1}\cdots p_N\rangle: E)\\
+&amp; &amp;&amp; &amp;&amp; S(C^j, \langle p_1\cdots p_{i-1},p,p_{i+1}\cdots p_N\rangle: E)\\
+\end{align*}
+$$
+   </p>
+   <ul>
+    <li>
+     If the pattern is a wildcard, return a single clause consisting of the
+input clause with the wildcard pattern replaced by wildcards for each subterm
+of the constructor.
+    </li>
+    <li>
+     If the pattern is a matching constructor, return a single clause consisting
+of the input clause with the constructor pattern replaced by its child
+patterns.
+    </li>
+    <li>
+     If the pattern is a non-matching constructor, return an empty list of
+clauses.
+    </li>
+    <li>
+     If the pattern is an or-pattern, split the clause into two for each
+sub-pattern and concatenate the specializations of each.
+    </li>
+   </ul>
+   <p>
+    The compiler also generates a default matrix, which discards all
+clauses whose \(i^\text{th}\) pattern does not match everything:
+   </p>
+   <p>
+    $$
+\begin{align*}
+&amp;\langle p_1\cdots p_{i-1},\_,p_{i+1}\cdots p_N\rangle: E &amp;&amp;\mapsto&amp;&amp;
+\langle p_1\cdots p_{i-1},p_{i+1}\cdots p_N\rangle: E\\
+&amp;\langle p_1\cdots p_{i-1},C^k(q_1\cdots q_a),p_{i+1}\cdots p_N\rangle: E
+&amp;&amp;\mapsto&amp;&amp;\begin{pmatrix}\text{No rows}\end{pmatrix}\\
+&amp;\langle p_1\cdots p_{i-1},(q \mid p),p_{i+1}\cdots p_N\rangle: E &amp;&amp;\mapsto
+     &amp;&amp; D(\langle p_1\cdots p_{i-1},q,p_{i+1}\cdots p_N\rangle: E)\\
+&amp; &amp;&amp; &amp;&amp; D(\langle p_1\cdots p_{i-1},p,p_{i+1}\cdots p_N\rangle: E)\\
+\end{align*}
+$$
+   </p>
+   <ul>
+    <li>
+     If the pattern is a wildcard, return a single clause consisting of the
+input clause without the wildcard pattern.
+    </li>
+    <li>
+     If the pattern is a constructor, return an empty list of clauses.
+    </li>
+    <li>
+     If the pattern is an or-pattern, split the clause into two for each
+sub-pattern and concatenate the defaults of each.
+    </li>
+   </ul>
+   <p>
+    When there are multiple columns with a generalized constructor pattern in the
+top row, Maranget recommends using a heuristic to select a column \(i\) that
+will result in an optimal decision tree.
+   </p>
+   <h3>
+    Example: Ackermann
+   </h3>
+   <p>
+    Consider the same example from before:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="">match</span><span style="color: #032f62;"> y, x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x1</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">1</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x2</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">2</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x3</span><span style="color: #005cc5;">, </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">x4</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">3</span><span style="color: #032f62;">
+</span></span></code></pre>
+   <p>
+    To compile it with Maranget's algorithm, the initial invokation of his function
+is:
+   </p>
+   <p>
+    $$
+\begin{align*}
+\textbf{CC}(\langle y, x \rangle,
+\begin{pmatrix}
+\langle x_1, Zero \rangle: &amp; E_1\\
+\langle Zero, Suc\:x_2 \rangle: &amp; E_2\\
+\langle Suc\:x_3, Suc\:x_4 \rangle: &amp; E_3\\
+\end{pmatrix})
+\end{align*}
+$$
+   </p>
+   <p>
+    The following is the generated code:
+   </p>
+   <pre style="color: #24292e;background: #fff;"><code><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: y, x
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   x1, Zero -&gt; 1
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Zero, Suc x2 -&gt; 2
+</span></span><span class="sourceLine"><span style="color: #6a737d;">   Suc x3, Suc x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3, second column selected </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">match</span><span style="color: #032f62;"> x </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #6a737d;">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: y
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     x1 -&gt; 1 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 2 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">let</span><span style="color: #032f62;"> x1 </span><span style="">=</span><span style="color: #032f62;"> y </span><span style="">in</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">1</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">v1</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: y, v1
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Zero, x2 -&gt; 2
+</span></span><span class="sourceLine"><span style="color: #6a737d;">     Suc x3, x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 3, first column selected </span><span style="color: #6a737d;">*)</span><span style="color: #032f62;">
+</span></span><span class="sourceLine"><span style="color: #032f62;">  </span><span style="">begin</span><span style="color: #005cc5;"> </span><span style="">match</span><span style="color: #005cc5;"> y </span><span style="">with</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">   </span><span style="color: #005cc5;"> </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Zero</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: v1
+</span></span><span class="sourceLine"><span style="color: #6a737d;">         Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">         x2 -&gt; 2 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 2 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="">let</span><span style="color: #005cc5;"> x2 </span><span style="">=</span><span style="color: #005cc5;"> v1 </span><span style="">in</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">2</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">    </span><span style="">|</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Suc</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">v2</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">-&gt;</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> Scrutinees: v2, v1
+</span></span><span class="sourceLine"><span style="color: #6a737d;">         Clauses:
+</span></span><span class="sourceLine"><span style="color: #6a737d;">         x3, x4 -&gt; 3 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="color: #6a737d;">(*</span><span style="color: #6a737d;"> By Case 2 </span><span style="color: #6a737d;">*)</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">      </span><span style="">let</span><span style="color: #005cc5;"> x3 </span><span style="">=</span><span style="color: #005cc5;"> v2 </span><span style="">and</span><span style="color: #005cc5;"> x4 </span><span style="">=</span><span style="color: #005cc5;"> v1 </span><span style="">in</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">3</span><span style="color: #005cc5;">
+</span></span><span class="sourceLine"><span style="color: #005cc5;">  </span><span style="">end</span><span style="color: #032f62;">
+</span></span></code></pre>
+   <h2>
+    Conclusion
+   </h2>
+   <p>
+    Notice that in Augustsson's algorithm, the pattern match compiler must apply
+the complicated fourth case and split the clauses list because a variable
+pattern appears above a constructor pattern in the first column, while in
+Maranget's algorithm, the compiler simply matches against the second column
+first. The Ackermann function definition is an example where Maranget's
+decision-tree is simpler than Augustsson's backtracking automaton. A seemingly
+innocuous decision such as the order of terms can drastically impact the code
+that a naive compiler generates, hence why good algorithms are important.
+   </p>
+   <p>
+    Neither Augustsson's nor Managet's algorithms fully address variable bindings.
+Languages such as OCaml and Haskell support <em>as-patterns</em>, which bind a
+variable to a term while matching the term against some wrapped pattern.
+As-patterns subsume variable patterns, which can be expressed as an as-pattern
+wrapping a wildcard pattern, and as-patterns additionally allow binding a
+variable to a term while matching the term against a constructor. By
+classifying patterns as either <em>variable</em> or constructor patterns, Augustsson's
+algorithm conflates the issue of control flow with binding. One can trivially
+generalize Augustsson's algorithm to support as-patterns by inserting
+let bindings whenever a variable appears and substituting appropriately in the
+subsequent code. Meanwhile, Maranget's paper only briefly suggests how to
+implement binding at all, focusing on control flow. The Ackermann example
+demonstrates how to bind variables in wildcard patterns in Maranget's
+algorithm. To bind variables in constructor patterns, extend the specialization
+operation by substituting the scrutinee for any variables bound by the removed
+constructor pattern in each clause.
+   </p>
+   <p>
+    Pattern matching is a powerful programming language feature that allows people
+to write code that closely resmbles the high-level domain logic. Pattern
+matching is entering the mainstream as more programming languages are
+adopting it. ML-style pattern matching is one variation of pattern matching
+which benefits from type safety, composability of patterns, and the ability to
+compile to low-level branching without an expensive runtime support library. I
+have shown two algorithms, Augustsson (1985) and Maranget (2008), for compiling
+ML-style pattern matching.
+   </p>
+   <p>
+    Not only are mainstream languages adopting elements of ML-style pattern
+matching, research languages are continuing to innovate on top of ML-style pattern
+matching. <a href="https://agda.readthedocs.io/en/v2.6.2.1/language/function-definitions.html">Agda</a>
+supports ML-style pattern matching over dependent types and codata types.
+Matching over depedent types can refine the types of other terms and rule out
+cases as unreachable. Matching over codata types <em>defines</em> a potentially
+infinite computation by how to inspect it. For an algorithm to compile Agda's
+pattern matching, see <a href="https://jesper.sikanda.be/files/elaborating-dependent-copattern-matching.pdf">Cockx and Abel (2018)</a>.
+In addition to ML-style patterns, <a href="https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/active-patterns">F#</a>
+has active patterns, which do not correspond with the constructors of a data
+type. ML-style pattern matching is not the culmination of programming language
+evolution, and programming languages cannot improve unless experimenters try
+new ideas.
+   </p>
+   <p>
+    Finally, pattern match compilation is just one step in compilation of a
+programming language. If enough people express interest, I would like to show
+the process of compiling a typed functional language from source to binary. If
+you like this post and want to learn more, please let me know what you would
+like to learn about!
+   </p>
+   <p>
+    <em>Special thanks to <a href="https://github.com/2over12">@2over12</a> for feedback on this
+post.</em>
+   </p>
+   <footer>
+    I'm looking for an internship!<br>
+  <a href="https://github.com/alan-j-hu">GitHub</a> | <a href="../resume.pdf">
+  Resume</a> | Email: alanh[at]ccs[dot]neu[dot]edu
+   </footer>
+  </div>
+ </body>
+</html>
