@@ -122,11 +122,11 @@ correct code.
 ## Adoption of Pattern Matching
 
 Variations of pattern matching have seen increasing mainstream adoption as
-programmers and language designers have realized its value. Pattern matching on
-datatypes first appeared in a language called NPL. The HOPE language would
-combine NPL's pattern matching feature with functional programming language
-features from the LCF dialect of ML [[MacQueen, Harper, and Reppy (2020)](
-https://smlfamily.github.io/history/SML-history.pdf)]. [Swift](
+programmers and language designers have realized its value. Pattern matching
+over data types first appeared in a language called NPL. The HOPE language
+would combine NPL's pattern matching feature with functional programming
+language features from the LCF dialect of ML [[MacQueen, Harper, and Reppy
+(2020)](https://smlfamily.github.io/history/SML-history.pdf)]. [Swift](
 https://docs.swift.org/swift-book/ReferenceManual/Patterns.html) and [Rust](
 https://doc.rust-lang.org/stable/reference/patterns.html) are two modern
 languages that support a version of pattern matching close to how it appears in
