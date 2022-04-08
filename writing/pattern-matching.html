@@ -812,10 +812,8 @@ Languages such as OCaml and Haskell support <em>as-patterns</em>, which bind a
 variable to a term while matching the term against some wrapped pattern.
 As-patterns subsume variable patterns, which can be expressed as an as-pattern
 wrapping a wildcard pattern, and as-patterns additionally allow binding a
-variable to a term while matching the term against a constructor. By
-classifying patterns as either <em>variable</em> or constructor patterns, Augustsson's
-algorithm conflates the issue of control flow with binding. One can trivially
-generalize Augustsson's algorithm to support as-patterns by inserting
+variable to a term while matching the term against a constructor. One can
+trivially generalize Augustsson's algorithm to support as-patterns by inserting
 let bindings whenever a variable appears and substituting appropriately in the
 subsequent code. Meanwhile, Maranget's paper only briefly suggests how to
 implement binding at all, focusing on control flow. The Ackermann example
