@@ -240,8 +240,8 @@ d) := E_1
 $$
 </p>
 
-In the first case, \\(e_1\cdots e_m\\) is empty. In this case, the resulting
-code is \\(E_1\\).
+In the first case, \\(\langle e_1\cdots e_m\rangle\\) is empty. In this case,
+the resulting code is \\(E_1\\).
 
 ### Case 2
 
@@ -269,12 +269,12 @@ d)
 $$
 </p>
 
-In the second case, \\(e\_1\cdots e\_n\\) contains at least one term, and all
-the patterns in the first column are variable patterns. The compiler removes
-\\(e\_1\\) from the list of terms and generates a new variable for it, then
-substitutes this variable for the corresponding variable pattern in each body
-expression. Compilation then continues on \\(e\_2\cdots e\_n\\) and the
-corresponding remaining patterns in the clauses.
+In the second case, \\(\langle e\_1\cdots e\_n\rangle\\) contains at least one
+term, and all the patterns in the first column are variable patterns. The
+compiler removes \\(e\_1\\) from the list of terms and generates a new variable
+for it, then substitutes this variable for the corresponding variable pattern
+in each body expression. Compilation then continues on \\(e\_2\cdots e\_n\\)
+and the corresponding remaining patterns in the clauses.
 
 ### Case 3
 
@@ -311,15 +311,15 @@ d)\\
 $$
 </p>
 
-In the third case, \\(e\_1 \cdots e\_n\\) contains at least one element, and
-in the first column, any (possibly none) variable patterns appear below all
-constructor patterns. The compiler generates a case analysis on \\(e\_1\\) with
-branches for each distinct constructor \\(C^1\cdots C^N\\) that appears in the
-first column, where clause list \\(M^i\\) for each constructor \\(C^i\\) is a
-function of clauses \\(1\cdots k\\). The compiler also generates a catch-all
-variable case to handle all constructors of the data type which do not appear
-in a pattern in the first column. \\(\textbf{default}\\) is a special
-instruction in the intermediate language that backtracks to the nearest
+In the third case, \\(\langle e\_1 \cdots e\_n\rangle\\) contains at least one
+element, and in the first column, any (possibly none) variable patterns appear
+below all constructor patterns. The compiler generates a case analysis on
+\\(e\_1\\) with branches for each distinct constructor \\(C^1\cdots C^N\\) that
+appears in the first column, where clause list \\(M^i\\) for each constructor
+\\(C^i\\) is a function of clauses \\(1\cdots k\\). The compiler also generates
+a catch-all variable case to handle all constructors of the data type which do
+not appear in a pattern in the first column. \\(\textbf{default}\\) is a
+special instruction in the intermediate language that backtracks to the nearest
 enclosing variable pattern case in the compiled code.
 
 For each constructor case \\(C^i\\), the compiler generates new variables
@@ -362,13 +362,13 @@ d):=\\
 $$
 </p>
 
-In the fourth and last case, \\(e\_1 \cdots e\_m\\) contains at least one
-element and in the first column of patterns, a variable pattern in clause
-\\(k\\) appears above a constructor pattern in clause \\(k+1\\). Augustsson
-proposes two ways to compile this case: The first is to compute a new pattern
-that captures the overlap between two patterns which must switch places, and
-inserting it between them. The second, which is what he illustrates in the
-paper, is to split the clause list into the longest subsequences
+In the fourth and last case, \\(\langle e\_1 \cdots e\_n\rangle\\) contains at
+least one element and in the first column of patterns, a variable pattern in
+clause \\(k\\) appears above a constructor pattern in clause \\(k+1\\).
+Augustsson proposes two ways to compile this case: The first is to compute a
+new pattern that captures the overlap between two patterns which must switch
+places, and inserting it between them. The second, which is what he illustrates
+in the paper, is to split the clause list into the longest subsequences
 \\(P\_1,P\_2,\cdots P\_\\ell\\) such that the third case applies to each of them
 alone, then compile each subsequence as a separate match and generate code that
 tries them in succession. (Therefore, given two adjacent subsequences
