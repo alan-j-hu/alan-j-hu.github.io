@@ -724,7 +724,7 @@ decision-tree is simpler than Augustsson's backtracking automaton. A seemingly
 innocuous decision such as the order of terms can drastically impact the code
 that a naive compiler generates, hence why good algorithms are important.
 
-Neither Augustsson's nor Managet's algorithms fully address variable bindings.
+Neither Augustsson's nor Maranget's algorithms fully address variable bindings.
 Languages such as OCaml and Haskell support *as-patterns*, which bind a
 variable to a term while matching the term against some wrapped pattern.
 As-patterns subsume variable patterns, which can be expressed as an as-pattern
