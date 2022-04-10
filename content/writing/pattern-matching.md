@@ -740,7 +740,7 @@ operation by substituting the scrutinee for any variables bound by the removed
 constructor pattern in each clause.
 
 Pattern matching is a powerful programming language feature that allows people
-to write code that closely resmbles the high-level domain logic. Pattern
+to write code that closely resembles the high-level domain logic. Pattern
 matching is entering the mainstream as more programming languages are
 adopting it. ML-style pattern matching is one variation of pattern matching
 which benefits from type safety, composability of patterns, and the ability to
