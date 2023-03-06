@@ -1,0 +1,193 @@
+<!DOCTYPE html><html><head>
+    <title>Pointers Opaque, Pointers Naked</title>
+    <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="../highlighting.css" rel="stylesheet">
+<link href="../lagda/Agda.css" rel="stylesheet">
+<link href="../site.css" rel="stylesheet">
+<script src="../loader.js" defer=""></script>
+<script type="text/javascript" id="MathJax-script" defer="" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+</script>
+
+  </head>
+  <body>
+    <div id="main">
+      <header>
+  <nav>
+    <ul>
+      <li><a href="../index.html">home</a></li>
+      <li><a href="../projects.html">projects</a></li>
+      <li><a href="index.html">writing</a></li>
+    </ul>
+  </nav>
+</header>
+
+      <h1>Pointers Opaque, Pointers Naked</h1>
+      <div class="subtitle">Contributing to the OCaml bindings to LLVM</div>
+      <center>March  6, 2023</center>
+      Tags:
+      [<a href="../tags/compilers.html">compilers</a>, 
+          <a href="../tags/ffi.html">ffi</a>, 
+          <a href="../tags/ocaml.html">ocaml</a>, 
+          <a href="../tags/llvm.html">llvm</a>]
+      <p>Over the past few months, I've been contributing code for LLVM's OCaml bindings
+and learned a lot about both the OCaml internals and the LLVM patch submission
+process. Because not all of this knowledge is documented, I will discuss what I
+learned to help other people contribute to the bindings.</p>
+<p>The bindings are an area where two projects, LLVM and OCaml, intersect, and
+the evolution of both these projects left code using deprecated features, which
+my patches updated. In previous versions of LLVM IR, pointer types carried the
+type of their pointee, a <a href="https://www.npopov.com/2021/06/02/Design-issues-in-LLVM-IR.html#pointer-element-types">design problem</a>
+because pointers frequently needed casts and relying on the pointee type for
+code transformations was incorrect anyway. LLVM is <a href="https://www.npopov.com/2022/12/20/This-year-in-LLVM-2022.html#opaque-pointers">migrating</a>
+from typed pointers to opaque pointers, which don't carry the type of their
+pointee. My first few patches brought several functions in OCaml API up to date
+with the C API, which has deprecated the old functions for working with typed
+pointers and introduced replacements that use opaque pointers. On OCaml's end,
+the much anticipated multicore runtime released with OCaml 5 removed support
+for <a href="https://discuss.ocaml.org/t/ann-a-dynamic-checker-for-detecting-naked-pointers/5805">naked pointers</a>, or pointers out of the OCaml heap that are treated
+as OCaml values. Naked pointers, which were already discouraged in OCaml 4, add
+overhead to the GC, which must distinguish them from the pointers to managed
+memory. This performance sacrifice was too much for OCaml 5's new runtime. My
+largest patch replaced all instances of naked pointers in the bindings.</p>
+<p>Since I've previously used CMake, building LLVM was straightforward, and most
+of my difficulties related to the interaction between CMake and OCaml. Nikita
+Popov has a <a href="https://developers.redhat.com/articles/2022/12/20/how-contribute-llvm">comprehensive tutorial</a> about
+contributing to LLVM that walks through the steps from building the code to
+submitting a patch for review on LLVM's <a href="https://reviews.llvm.org">Phabricator instance</a>, so I'll discuss the aspects specific to OCaml.
+CMake will only enable the bindings if it locates the <code>ocamlfind</code> executable
+and the <a href="https://opam.ocaml.org/packages/ctypes/"><code>ctypes</code></a> and
+<a href="https://opam.ocaml.org/packages/ctypes-foreign/"><code>ctypes-foreign</code></a> packages.
+In the case of success, CMake will output something similar to:</p>
+<pre style="color: #24292e;background: #fff;"><code>-- Found OCaml: /home/alan/.opam/5.0.0/bin/ocamlfind  
+-- OCaml bindings enabled.
+</code></pre><p>If CMake is missing one of the requirements, it will output:</p>
+<pre style="color: #24292e;background: #fff;"><code>-- OCaml bindings disabled.
+</code></pre><p>To test the code with and without naked pointers, I had to switch between OCaml
+4.14 and OCaml 5. Running <code>opam switch 4.14.1</code> or <code>opam switch 5.0.0</code>, then
+<code>$(eval opam env)</code> is not enough to make LLVM build with the desired OCaml
+version. When CMake generates the build system, it saves the path to
+<code>ocamlfind</code>, which the build system will continue to use even after changing
+switches. I ended up keeping multiple build directories, each for a different
+OCaml version.</p>
+<p>After generating the build files with CMake, I ran
+<code>ninja check-llvm-bindings-ocaml</code> to build and test the bindings. Occasionally,
+the tests failed due to the OCaml debuginfo library being missing; in this
+case, I ran <code>ninja ocaml_llvm_debuginfo</code>, then built the tests again. I also
+sometimes got "inconsistent assumptions over interface" errors, in which case
+I deleted all OCaml build results and rebuilt them (deleting the entire build
+directory was not necessary). Since CMake is intended for building C and
+C++ code, I am not surprised that using it with OCaml wasn't as seamless.</p>
+<p>While I did not require deep knowledge of OCaml to bring the bindings up to
+date with the opaque pointer API, I learned a lot about OCaml's runtime over
+the course of replacing naked pointers. The OCaml manual suggests several ways
+instead of naked pointers to expose foreign pointers as OCaml values: OCaml
+uses the LSB to distinguish between pointers and non-pointers; pointers have a
+LSB of 0 and non-pointers, such as integers, Booleans, and nullary
+constructors, have a LSB of 1. If pointers out of the OCaml heap are at least
+2-byte aligned, the OCaml manual <a href="https://v2.ocaml.org/manual/intfc.html#ss:c-outside-head">suggests</a> exposing them to
+OCaml by setting the LSB to 1. Other solutions involve wrapping the foreign
+pointer in an OCaml heap allocation, so the solution of setting the LSB is the
+most efficient one. Josh Berdine, a past contributor to the bindings, suggested
+that I could assume pointers originating from LLVM are 2-byte aligned and use
+the LSB tagging scheme. Josh Berdine also patiently and carefully reviewed my
+code over its many revisions, and I am grateful to him for spending his time to
+see my patch to completion.</p>
+<p>The OCaml FFI documentation gives <a href="https://v2.ocaml.org/manual/intfc.html#s%3Ac-gc-harmony">rules</a> such as:</p>
+<blockquote>
+<ol>
+<li>
+<p>A function that has parameters or local variables of type <code>value</code> must
+begin with a call to one of the <code>CAMLparam</code> macros and return with
+<code>CAMLreturn</code>, <code>CAMLreturn0</code>, or <code>CAMLreturnT</code>. In particular, <code>CAMLlocal</code> and
+<code>CAMLxparam</code> can only be called after <code>CAMLparam</code>.<br>...</p>
+</li>
+<li>
+<p>Local variables of type <code>value</code> must be declared with one of the
+<code>CAMLlocal</code> macros. Arrays of values are declared with <code>CAMLlocalN</code>. These
+macros must be used at the beginning of the function, not in a nested block.
+<br>...</p>
+</li>
+</ol>
+<p>...</p>
+</blockquote>
+<p>However, the rules in the OCaml documentation are a simplification: following
+them will not result in unsafe code, but they describe a conservative
+approximation of what code is safe. Instead of following the rules in the OCaml
+documentation, the LLVM bindings follow more specific rules that are based on
+an understanding of how the OCaml runtime works. For example, even though the
+OCaml documentation instructs that all parameters be registered with the
+<code>CAMLparam</code> macros, the bindings frequently don't do this. <code>CAMLparam</code>
+registers a value as a GC root, but unboxed data such as <code>int</code>s don't need to
+be roots, and even boxed data such as <code>string</code>s don't need to be registered if
+the function won't trigger the GC, so in these cases, the bindings can skip the
+macros.</p>
+<p>Not all of the reasons why the bindings were using the OCaml runtime API safely
+were obvious to me. The bindings contained the following helper function:</p>
+<pre style="color: #24292e;background: #fff;"><code></code><span style="color: #005cc5;">value</span><span style="color: #032f62;"> </span><span style="color: #005cc5;">caml_alloc_tuple_uninit</span><span style="color: #6a737d;">(</span><span style="color: #005cc5;">mlsize_t</span><span style="color: #005cc5;"> </span><span style="color: #24292e;">wosize</span><span style="color: #6a737d;">)</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">{</span><span style="color: #005cc5;">
+</span><span class="sourceLine"></span><span style="color: #005cc5;">  </span><span style="">if</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">(</span><span style="color: #005cc5;">wosize</span><span style="color: #005cc5;"> </span><span style="color: #6a737d;">&lt;</span><span style="">=</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">Max_young_wosize</span><span style="color: #005cc5;">) {
+</span><span class="sourceLine"></span><span style="color: #005cc5;">    return</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">caml_alloc_small</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">wosize</span><span style="color: #6a737d;">,</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">0</span><span style="color: #005cc5;">);
+</span><span class="sourceLine"></span><span style="color: #005cc5;">  } else {
+</span><span class="sourceLine"></span><span style="color: #005cc5;">    return</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">caml_alloc_shr</span><span style="color: #005cc5;">(</span><span style="color: #005cc5;">wosize</span><span style="color: #6a737d;">,</span><span style="color: #005cc5;"> </span><span style="color: #005cc5;">0</span><span style="color: #005cc5;">);
+</span><span class="sourceLine"></span><span style="color: #005cc5;">  }
+</span><span class="sourceLine"></span><span style="color: #005cc5;">}
+</span><span class="sourceLine"></span></pre><p><code>caml_alloc_small</code> allocates from the OCaml minor heap while <code>caml_alloc_shr</code>
+allocates from the OCaml major heap. The OCaml documentation <a href="https://v2.ocaml.org/manual/intfc.html#sss:c-low-level-alloc">states</a> that
+blocks allocated with <code>caml_alloc_small</code> should be initialized with a direct
+assignment to the fields while blocks allocated with <code>caml_alloc_shr</code> should be
+initialized with <code>caml_initialize</code>. However, the LLVM code initialized all
+allocations returned from its <code>caml_alloc_tuple_init</code> helper function with
+direct assignment regardless of which branch of the <code>if</code> statement was taken. I
+didn't think the code was safe, but it was: Josh Berdine explained to me that
+the purpose of <code>caml_initialize</code> is to notify the GC if the major heap
+allocation contains fields that point to the minor heap, but none of the
+field initializations in question were to the minor heap anyway.</p>
+<p>Maintaining the bindings require an understanding of the OCaml runtime to
+a level that currently isn't reflected in documentation, but instead relies
+on institutional knowledge imparted by past contributors. Since the
+intersection of people knowledgable about LLVM and OCaml is small,
+institutional knowledge can fade as people come and go. Resources such as
+<a href="https://dev.realworldocaml.org/toc.html#scrollNav-3"><em>Real World OCaml</em></a> have
+in-depth documentation of the OCaml runtime, dicussing aspects such as the
+workings of the garbage collector that the OCaml official documentation does
+not cover. However, <em>Real World OCaml</em> predates OCaml 5, and the new parallel
+runtime deserves a fresh effort at documentation as the new parallel features
+make interopability between C and OCaml even trickier to get right. While
+information about the new runtime may be scattered across <a href="https://dl.acm.org/doi/10.1145/3453483.3454039">research papers</a>, <a href="https://github.com/ocaml/ocaml/blob/c08807a3b575f870a23ddfdcf3bf45dc95f75cc5/runtime/caml/fiber.h#L141">code comments</a>,
+and <a href="https://kcsrk.info/multicore/gc/2017/07/06/multicore-ocaml-gc/">blog posts</a>, thoroughly
+documenting the runtime in one place would benefit all projects that use the
+OCaml FFI. In the future, <a href="https://www.ccs.neu.edu/home/amal/papers/seminterop.pdf">research</a> into verification of
+FFI code may lead to tooling that can check the OCaml bindings to LLVM, but for
+now, thorough testing and careful review is all we can do to ensure that the
+code is correct.</p>
+<p>Code review takes place on <a href="https://reviews.llvm.org/">LLVM's Phabricator instance</a> and uses a workflow that I was unfamiliar with but
+eventually adapted to. The workflow which I was used to from GitHub projects
+was to make a feature branch and push commits to the branch as I updated my
+work. In contrast, the LLVM workflow uses <code>git commit --amend</code> for updating
+work and uses stacked diffs for separating large changes into logical pieces
+for separate review. However, I didn't need to learn how to use stacked diffs
+to make my changes. As a matter of fact, LLVM is migrating to GitHub because
+Phabricator is no longer maintained, prompting a <a href="https://discourse.llvm.org/t/code-review-process-update/63964">discussion</a> about whether
+GitHub can support the LLVM workflow. Chris Lattner <a href="https://discourse.llvm.org/t/code-review-process-update/63964/10">encouraged</a> people to
+speak up to their organization if it relied on LLVM and could be sponsoring a
+code review solution. I don't belong to any organizations that can provide
+LLVM with tools, so the most I can do is bring attention to this issue.</p>
+<p>Finally, while my patches help the bindings remain usable with new versions of
+LLVM and OCaml, the bindings still have several opportunities for future
+contributions. First, they should now be usable in OCaml 5 sequential code, but
+the bindings have yet to be checked for safety in OCaml 5 parallel code.
+Second, LLVM is <a href="https://blog.llvm.org/posts/2021-03-26-the-new-pass-manager/">switching</a> from the legacy
+pass manager to the new pass manager, and though I've removed the bindings for
+the legacy pass manager, bindings for the new pass manager have yet to
+be added. If you're interested in both LLVM and OCaml, I encourage you to
+contribute and hope my experience helps you.</p>
+<p><em>Special thanks to <a href="https://github.com/2over12">@2over12</a> for feedback on this
+post.</em></p>
+
+      <footer>
+</footer>
+
+    </div>
+  
+
+</body></html>
