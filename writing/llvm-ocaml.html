@@ -50,9 +50,9 @@ as OCaml values. Naked pointers, which were already discouraged in OCaml 4, add
 overhead to the GC, which must distinguish them from the pointers to managed
 memory. This performance sacrifice was too much for OCaml 5's new runtime. My
 largest patch replaced all instances of naked pointers in the bindings.</p>
-<p>Since I've previously used CMake, building LLVM was straightforward, and most
-of my difficulties related to the interaction between CMake and OCaml. Nikita
-Popov has a <a href="https://developers.redhat.com/articles/2022/12/20/how-contribute-llvm">comprehensive tutorial</a> about
+<p>Since I've used CMake before, building LLVM was straightforward, and most of my
+difficulties related to the interaction between CMake and OCaml. Nikita Popov
+has a <a href="https://developers.redhat.com/articles/2022/12/20/how-contribute-llvm">comprehensive tutorial</a> about
 contributing to LLVM that walks through the steps from building the code to
 submitting a patch for review on LLVM's <a href="https://reviews.llvm.org">Phabricator instance</a>, so I'll discuss the aspects specific to OCaml.
 CMake will only enable the bindings if it locates the <code>ocamlfind</code> executable
