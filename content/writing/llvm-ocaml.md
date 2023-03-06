@@ -31,9 +31,9 @@ overhead to the GC, which must distinguish them from the pointers to managed
 memory. This performance sacrifice was too much for OCaml 5's new runtime. My
 largest patch replaced all instances of naked pointers in the bindings.
 
-Since I've previously used CMake, building LLVM was straightforward, and most
-of my difficulties related to the interaction between CMake and OCaml. Nikita
-Popov has a [comprehensive tutorial](
+Since I've used CMake before, building LLVM was straightforward, and most of my
+difficulties related to the interaction between CMake and OCaml. Nikita Popov
+has a [comprehensive tutorial](
 https://developers.redhat.com/articles/2022/12/20/how-contribute-llvm) about
 contributing to LLVM that walks through the steps from building the code to
 submitting a patch for review on LLVM's [Phabricator instance](
