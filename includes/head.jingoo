@@ -1,9 +1,0 @@
-<meta charset='utf-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1'>
-<link href='/highlighting.css' rel='stylesheet'>
-<link href='/lagda/Agda.css' rel='stylesheet'>
-<link href='/site.css' rel='stylesheet'>
-<script src='/loader.js' defer></script>
-<script type="text/javascript" id="MathJax-script" defer
-  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
-</script>

@@ -1,11 +1,9 @@
-+++
-title = "The Case for Pattern Matching"
-subtitle = "A tutorial on two pattern match compilation algorithms"
-layout = "post.jingoo"
-published = 2022-04-08
-[taxonomies]
-tags = ["compilers"]
-+++
+---
+title: "The Case for Pattern Matching"
+subtitle: "A tutorial on two pattern match compilation algorithms"
+published: 2022-04-08
+tags: ["compilers"]
+---
 
 Pattern matching is a powerful programming language feature for performing
 case analysis over a data type. Patterns, a high-level description of the forms

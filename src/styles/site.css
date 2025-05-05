@@ -12,7 +12,7 @@ body {
   text-size-adjust: none;
 }
 
-#main {
+.main {
   width: 80%;
   max-width: 700px;
   margin: 0 auto;
@@ -134,4 +134,31 @@ figure > img {
 
 figure > figcaption {
   font-style: italic;
+}
+
+.publish-date {
+  text-align: center;
+}
+
+.tag-list {
+  display: inline;
+  margin: 0;
+  padding: 0;
+}
+
+.tag {
+  display: inline-block;
+  margin: 0;
+  padding: 0 0.5rem;
+}
+
+.post-list {
+  padding: 0;
+  width: 100%;
+}
+
+.post-preview-item {
+  list-style: none;
+  padding: 0;
+  width: 100%;
 }

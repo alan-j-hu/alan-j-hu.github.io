@@ -1,0 +1,24 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "../../layouts/Layout.astro";
+import PostPreview from "../../components/PostPreview.astro";
+
+const posts = await getCollection("blog");
+posts.sort((a, b) => b.data.published.getTime() - a.data.published.getTime());
+---
+<Layout title="Writing">
+  <h2>Writing</h2>
+  <p>This page is where you can find my technical writing.</p>
+  <ul class="post-list">
+    {
+      posts.map((post) => (
+        <li class="post-preview-item">
+          <PostPreview
+            url=`/writing/${post.id}`
+            title={post.data.title}
+            subtitle={post.data.subtitle}
+            published={post.data.published}/>
+        </li>))
+    }
+  </ul>
+</Layout>

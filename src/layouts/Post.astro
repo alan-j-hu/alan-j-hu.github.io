@@ -1,0 +1,29 @@
+---
+import Layout from "./Layout.astro";
+import { renderDate } from "../utils/utils"
+
+interface Props {
+  frontmatter: {
+    title: string,
+    subtitle: string,
+    published: Date,
+    tags: Array<string>,
+  }
+}
+
+const { frontmatter } = Astro.props;
+---
+
+<Layout title={frontmatter.title}>
+  <h1>{frontmatter.title}</h1>
+  <div class="subtitle">{frontmatter.subtitle}</div>
+  <div class="publish-date">{renderDate(frontmatter.published)}</div>
+  Tags: [
+  <ul class="tag-list">
+    {
+      frontmatter.tags.map(tag => (
+        <li class="tag"><a href=`/tag/${tag}`>{tag}</a></li>))
+    }
+  </ul> ]
+  <slot/>
+</Layout>

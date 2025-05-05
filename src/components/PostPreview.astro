@@ -1,0 +1,18 @@
+---
+import { renderDate } from "../utils/utils"
+
+interface Props {
+  url: string;
+  title: string;
+  subtitle: string;
+  published: Date;
+}
+
+const { url, title, subtitle, published } = Astro.props;
+---
+<div class='post-item'>
+  <a href={url}>{title}</a><br/>
+  {subtitle}<br/>
+  {renderDate(published)}<br/>
+  <br/>
+</div>

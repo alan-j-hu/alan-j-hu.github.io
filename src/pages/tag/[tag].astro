@@ -1,0 +1,45 @@
+---
+import { getCollection } from "astro:content";
+import Layout from "../../layouts/Layout.astro";
+import PostPreview from "../../components/PostPreview.astro";
+
+export async function getStaticPaths() {
+  const allPosts = await getCollection("blog");
+  allPosts
+    .sort((a, b) => b.data.published.getTime() - a.data.published.getTime());
+
+  const tags = new Set<string>();
+  for (let post of allPosts) {
+    for (let tag of post.data.tags) {
+      tags.add(tag);
+    }
+  }
+
+  const paths = [];
+  for (let tag of tags) {
+    const posts = allPosts.filter(post => post.data.tags.includes(tag));
+    paths.push({ params: { tag }, props: { posts } });
+  }
+  return paths;
+}
+
+const { tag } = Astro.params;
+const { posts } = Astro.props;
+
+---
+<Layout title={`Tag: ${tag}`}>
+  <h2>Tag: {tag}</h2>
+  <ul class="post-list">
+    {
+      posts
+        .map(post => (
+          <li class="post-preview-item">
+            <PostPreview
+              url=`/writing/${post.id}`
+              title={post.data.title}
+              subtitle={post.data.subtitle}
+              published={post.data.published}/>
+          </li>))
+    }
+  </ul>
+</Layout>

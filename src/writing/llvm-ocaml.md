@@ -1,11 +1,9 @@
-+++
-title = "Pointers Opaque, Pointers Naked"
-subtitle = "Contributing to the OCaml bindings to LLVM"
-layout = "post.jingoo"
-published = 2023-03-06
-[taxonomies]
-tags = ["compilers", "ffi", "ocaml", "llvm"]
-+++
+---
+title: "Pointers Opaque, Pointers Naked"
+subtitle: "Contributing to the OCaml bindings to LLVM"
+published: 2023-03-06
+tags: ["compilers", "ffi", "ocaml", "llvm"]
+---
 
 Over the past few months, I've been contributing code for LLVM's OCaml bindings
 and learned a lot about both the OCaml internals and the LLVM patch submission
