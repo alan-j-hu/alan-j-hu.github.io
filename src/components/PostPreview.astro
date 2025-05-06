@@ -1,18 +1,16 @@
 ---
-import { renderDate } from "../utils/utils"
+import { renderDate } from "../utils/utils";
+import type { CollectionEntry } from "astro:content";
 
 interface Props {
-  url: string;
-  title: string;
-  subtitle: string;
-  published: Date;
+  post: CollectionEntry<'blog'>;
 }
 
-const { url, title, subtitle, published } = Astro.props;
+const { post } = Astro.props;
 ---
-<div class='post-item'>
-  <a href={url}>{title}</a><br/>
-  {subtitle}<br/>
-  {renderDate(published)}<br/>
+<div class="post-item">
+  <a href={`/writing/${post.id}`}>{post.data.title}</a><br/>
+  {post.data.subtitle}<br/>
+  {renderDate(post.data.published)}<br/>
   <br/>
 </div>

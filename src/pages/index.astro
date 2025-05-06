@@ -1,8 +1,34 @@
 ---
-import Layout from '../layouts/Layout.astro';
----
+import { getCollection } from "astro:content";
+import Layout from "../layouts/Layout.astro";
+import PostList from "../components/PostList.astro";
 
-<Layout title="About">
-  Hi! My name is Alan, and I'm a student at Northeastern University. I am
-  interested in compilers and program analysis.
+const posts = await getCollection("blog");
+posts.sort((a, b) => b.data.published.getTime() - a.data.published.getTime());
+---
+<Layout title="Home">
+  <p>
+    My name is Alan Hu. I'm a recent graduate of Northeastern University with
+    a BSc in Computer Science and a minor in Mathematics.
+  </p>
+  <p>
+    I am fluent in C as well as modern C++. I'm currently learning graphics
+    programming by writing a renderer with WebGPU via Google Dawn.
+  </p>
+  <p>
+    I picked up C# for my CS 4500 Software Development upper-level course. For
+    this course, I built a client and server for a game similar to Qwirkle,
+    which communicated over TCP via a JSON protocol. I enjoyed using C# and
+    would like more opportunities to use it.
+  </p>
+  <p>
+    I'm also fluent in Java. During my last co-op at Teledyne, I contributed
+    to a Java Android application for controlling unmanned ground vehicles.
+  </p>
+  <p>
+    Finally, I have web development experience with various technologies
+    including NodeJS, React, and TypeScript. At my first co-op, I helped
+    build the full-stack for Pelicargo, a startup in the shipping industry.
+  </p>
+  <PostList posts={posts}/>
 </Layout>
